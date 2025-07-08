@@ -158,3 +158,27 @@ python log_model.py --geography EU --company ClientA
 ```
 
 By combining these strategies, the project provides a well-organized and scalable MLOps workflow that effectively manages numerous model variants without having to overengineer the organization of the projects or creating more layers of folders and directories.
+
+### Section 2: Orchestration with Dagster
+
+This section details the orchestration of the machine learning pipeline using Dagster. The primary goal is to automate the process of generating predictions from the trained churn model and storing them for downstream use.
+
+#### 1. Dagster Job for Prediction
+
+A Dagster job, defined in `orchestration/job.py`, has been created to orchestrate the following steps:
+
+1.  **Fetch Raw Input Data**: The pipeline starts by fetching the raw input data required for predictions. Currently, it reads from the sample data located in the `data/churn` directory.
+2.  **Apply Feature Transformations**: A placeholder asset is included for any necessary feature transformations. This allows for future extension without altering the core pipeline structure.
+3.  **Load Trained Model from MLflow**: The job loads the latest production-ready model from the MLflow Model Registry. The MLflow tracking server URI and model details are configured via the `orchestration/config/dagster.yaml` file.
+4.  **Generate Predictions**: Using the loaded model, the pipeline generates churn predictions for the input data.
+5.  **Store Predictions**: The generated predictions, along with metadata like the model version, are stored in a PostgreSQL database. The database connection details are securely fetched from AWS Secrets Manager.
+
+#### 2. Scheduling and Robustness
+
+To ensure the pipeline is both reliable and runs consistently, the following features have been implemented:
+
+*   **Weekly Schedule**: The prediction job is scheduled to run automatically every Monday at midnight UTC. This is defined in `orchestration/job.py` using Dagster's scheduling capabilities.
+*   **New Data Detection**: The `raw_churn_data` asset includes a placeholder where logic can be added to detect and process only new, unseen data. This is crucial for running the pipeline efficiently in a production environment.
+*   **Retry Logic**: Critical steps, such as storing predictions in the database, are equipped with a retry policy. If a transient error occurs, Dagster will automatically retry the step, increasing the pipeline's resilience.
+
+For more detailed information about the Dagster implementation, please refer to the `orchestration/README.md` file.

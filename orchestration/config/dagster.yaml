@@ -1,0 +1,14 @@
+resources:
+  mlflow_config:
+    config:
+      mlflow_tracking_uri: "sample_uri" # Replace with a MLflow tracking server URI
+      model_name: "churn-prediction-model-us"
+      model_stage: "Production"
+
+  db_config:
+    config:
+      db_secret_name: "predictions-pg-database"
+
+  secretsmanager:
+    config:
+      region_name: "us-east-1" 

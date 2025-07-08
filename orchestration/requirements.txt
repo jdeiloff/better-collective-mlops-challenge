@@ -1,0 +1,7 @@
+dagster
+dagster-aws
+pandas
+mlflow
+sqlalchemy
+boto3
+psycopg2-binary
