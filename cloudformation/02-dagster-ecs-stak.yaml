@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2021-09-09'
+Description: Deploys the containerized Dagster application on ECS Fargate.
+
+Parameters:
+  DagsterImageUri:
+    Type: String
+    Description: The full URI of the Dagster Docker image in ECR.
+  DBSecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret for the MLflow DB.
+  MlflowArtifactBucketName:
+    Type: String
+    Description: Name of the S3 bucket for MLflow artifacts.
+
+Resources:
+  # 1. ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: DagsterCluster
+
+  # 2. IAM Role for the ECS Task (Permissions for your app)
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DagsterTaskPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${MlflowArtifactBucketName}"
+                  - !Sub "arn:aws:s3:::${MlflowArtifactBucketName}/*"
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DBSecretArn
+
+  # 3. ECS Task Definition (The blueprint for your container)
+  DagsterTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: DagsterTask
+      Cpu: "1024" # 1 vCPU
+      Memory: "2048" # 2 GB
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [ "FARGATE" ]
+      ExecutionRoleArn: !Ref AWS::NoValue # Or a specific Execution Role if needed
+      TaskRoleArn: !Ref ECSTaskRole
+      ContainerDefinitions:
+        - Name: dagster-container
+          Image: !Ref DagsterImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 3000
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub "/ecs/${AWS::StackName}"
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  # 4. ECS Service (Runs and maintains the Dagster Task)
+  DagsterService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: DagsterWebService
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref DagsterTaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: 1
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Split [ ",", !ImportValue PublicSubnets ] # From your VPC stack
+          SecurityGroups:
+            - !ImportValue DagsterSecurityGroupId # Ingress from ALB
+            - !ImportValue MlflowRDSSecurityGroupId # Egress to RDS

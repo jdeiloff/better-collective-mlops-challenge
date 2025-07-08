@@ -2,27 +2,63 @@
 
 Solution proposed by [Jonathan Deiloff](https://github.com/jdeiloff).
 
-## Repository Structure
+## Architecture Diagram
 
-This repository is organized to address the Senior MLOps Engineer take-home technical assessment. Below is a description of the key directories and files:
+Below is a high-level architecture diagram of the MLOps pipeline implemented in this repository:
 
-*   **`README.md`**: (This file) Provides an overview of the project and its structure.
-*   **`data/`**: Contains sample data and feature information for the churn model.
-    *   `churn/feature_names_3.json`: A JSON file containing the names of the model features.
-    *   `churn/X_test_sample_2.json`: A JSON file with sample data for model input schema creation.
-*   **`docs/`**: Contains the original assessment document.
-    *   `Senior_MLOps_Engineer_Take-Home_2.pdf`: The original PDF document outlining the technical assessment.
-*   **`experiment_tracking/`**: Contains all scripts and configurations for setting up and interacting with the MLflow tracking environment.
-    *   `setup.py`: A Python script to set up the MLflow tracking server with a PostgreSQL backend and S3 artifact store. It retrieves database credentials from AWS Secrets Manager.
-    *   `log_model.py`: A Python script to log the churn model, its metadata (input schema, parameters, metrics), and register it in the MLflow Model Registry under a versioned name.
-    *   `db/init.sql`: SQL script to initialize the PostgreSQL database with the required MLflow schema.
-    *   `requirements.txt`: Lists the Python dependencies required for the `experiment_tracking` scripts.
-    *   `pyproject.toml`: Project configuration file for `uv`.
-*   **`models/`**: Contains the pre-trained model artifacts.
-    *   `churn/xgb_churn_model_2.bin`: The serialized XGBoost model.
-    *   `churn/xgb_churn_model_2.json`: A JSON file with model configuration details.
-*   **`notebooks/`**: Intended for Jupyter notebooks for exploration and development (currently empty).
-*   **`tests/`**: Intended for test scripts (currently empty).
+```mermaid
+graph TD
+    A[Raw Data in S3 / Local] -->|Fetch| B[Dagster Job: raw_churn_data]
+    B --> C[Dagster Asset: transformed_features]
+    C --> D[Dagster Asset: load_model_from_mlflow]
+    D --> E[Dagster Asset: generate_predictions]
+    E --> F[Dagster Asset: store_predictions]
+    F -->|Write| G[(PostgreSQL DB)]
+    D -->|Load| H[(MLflow Model Registry)]
+    subgraph Orchestration
+        B
+        C
+        D
+        E
+        F
+    end
+    subgraph Experiment Tracking
+        H
+    end
+```
+
+## Repository Structure (Current State)
+
+```
+README.md
+orchestration/
+    README.md
+    job.py
+    requirements.txt
+    config/
+        dagster.yaml
+    db/
+        init.sql
+experiment_tracking/
+    setup.py
+    log_model.py
+    db/
+        init.sql
+    requirements.txt
+    pyproject.toml
+data/
+    churn/
+        feature_names_3.json
+        X_test_sample_2.json
+docs/
+    Senior_MLOps_Engineer_Take-Home_2.pdf
+models/
+    churn/
+        xgb_churn_model_2.bin
+        xgb_churn_model_2.json
+notebooks/
+tests/
+```
 
 ## Assessment Sections
 
@@ -186,3 +222,14 @@ For more detailed information about the Dagster implementation, please refer to 
 #### 3. S3 Fallback for Data Ingestion
 
 The pipeline is designed to fetch the raw churn data and feature names from an S3 artifact store (using the `MLFLOW_S3_BUCKET` environment variable). If S3 is unavailable or the fetch fails, it automatically falls back to loading the files from the local `data/churn` directory. This ensures robust and flexible data ingestion for both cloud and local development environments.
+
+
+### Section 3: Questions
+
+They are answered in the file [section_3_answers.md](docs/section_3_answers.md).
+
+### Recommendations and suggestions if having more time:
+
+If I would have more time, I would like to implement the data drift and model performance degradation metrics and alerts Dagster assets, maybe introducing a Feature Store to get static data using the exact same logic for training, batch prediction and it can also provide value as the features can be attached or linked to a specific point in time, reproducing stationality and preventing data leakage. This Feature Store would replace the raw churn data ingestion. I would also add the deployment of A/B Testing for models, with a simple switch to promote the best model to production to do fast iterations in the model performance testing.
+I would also store the feature importances for each prediction, to enable model explainability to understand why a prediction was made like that.
+

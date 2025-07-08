@@ -1,0 +1,41 @@
+ersion: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      # Optional: Install any pre-deployment validation tools like cfn-lint
+      - pip install cfn-lint
+      - echo "Install phase complete."
+
+  pre_build:
+    commands:
+      # Run static analysis on your templates
+      - echo "Running cfn-lint on templates..."
+      - cfn-lint cloudformation/*.yaml
+      - echo "Pre-build phase complete."
+
+  build:
+    commands:
+      - echo "Starting CloudFormation deployment..."
+
+      # Deploy the MLflow Backend Stack
+      - aws cloudformation deploy \
+          --template-file cloudformation/01-mlflow-backend-stack.yaml \
+          --stack-name mlflow-backend-dev \
+          --parameter-overrides file://cloudformation/parameters/mlflow-dev-params.json \
+          --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+          --no-fail-on-empty-changes
+
+      # Deploy the Dagster ECS Stack
+      # Asuming that the Dagster ECR image URI is stored in AWS Systems Manager Parameter Store.
+      - DAGSTER_IMAGE_URI=$(aws ssm get-parameter --name /dagster/dev/image-uri --query "Parameter.Value" --output text)
+      - aws cloudformation deploy \
+          --template-file cloudformation/02-dagster-ecs-stack.yaml \
+          --stack-name dagster-ecs-dev \
+          --parameter-overrides file://cloudformation/parameters/dagster-dev-params.json DagsterImageUri=$DAGSTER_IMAGE_URI \
+          --capabilities CAPABILITY_IAM \
+          --no-fail-on-empty-changes
+
+      - echo "Build phase complete."

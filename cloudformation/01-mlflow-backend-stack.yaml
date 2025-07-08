@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2021-09-09'
+Description: Provisions the S3 Artifact Store and RDS Metadata Store for MLflow.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: A prefix for all created resources.
+  DBUsername:
+    Type: String
+    Description: Username for the PostgreSQL database.
+    NoEcho: true
+  DBSubnetIds:
+    Type: CommaDelimitedList
+    Description: List of subnet IDs for the RDS instance.
+
+Resources:
+  # 1. S3 Bucket for MLflow Artifacts
+  MlflowArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-mlflow-artifacts-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - ID: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+    DeletionPolicy: Retain # Protects your model artifacts from accidental deletion
+
+  # 2. Security Group for the RDS Database
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow access to MLflow RDS from Dagster ECS Tasks"
+      VpcId: !ImportValue MyVPC # Assuming you have a VPC stack that exports its ID
+
+  # 3. RDS Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "Subnet group for MLflow RDS"
+      SubnetIds: !Ref DBSubnetIds
+
+  # 4. Secret to store the DB password in Secrets Manager
+  DBPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: "Password for the MLflow RDS database"
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username": "${DBUsername}"}'
+        GenerateStringKey: "password"
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\'
+
+  # 5. RDS Database Instance for MLflow Metadata
+  MlflowDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: mlflowdb
+      Engine: postgres
+      EngineVersion: '14'
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: '20'
+      MasterUsername: !Join ['', [ '{{resolve:secretsmanager:', !Ref DBPasswordSecret, ':SecretString:username}}' ]]
+      MasterUserPassword: !Join ['', [ '{{resolve:secretsmanager:', !Ref DBPasswordSecret, ':SecretString:password}}' ]]
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+
+Outputs:
+  ArtifactBucketName:
+    Value: !Ref MlflowArtifactBucket
+  DBSecretArn:
+    Value: !Ref DBPasswordSecret
+  RDSSecurityGroupId:
+    Value: !GetAtt RDSSecurityGroup.GroupId
