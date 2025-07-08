@@ -20,23 +20,41 @@ class DBConfig(Config):
 
 @asset
 def raw_churn_data():
-    """Fetches raw churn data from the data/churn folder."""
-    # Correctly reference the data from the root of the project
-    project_root = os.path.dirname(os.path.dirname(__file__))
-    data_path = os.path.join(project_root, "data", "churn", "X_test_sample_2.json")
-    feature_names_path = os.path.join(project_root, "data", "churn", "feature_names_3.json")
-
-    with open(data_path, 'r') as f:
-        data = json.load(f)
-    with open(feature_names_path, 'r') as f:
-        feature_names = json.load(f)
-
+    """Fetches raw churn data from S3 artifact store, falls back to local folder if unavailable."""
+    import boto3
+    s3_bucket = os.getenv("MLFLOW_S3_BUCKET")
+    s3 = boto3.client("s3") if s3_bucket else None
+    s3_prefix = "data/churn/"
+    data_key = s3_prefix + "X_test_sample_2.json"
+    feature_names_key = s3_prefix + "feature_names_3.json"
+    data = None
+    feature_names = None
+    # Try S3 first
+    if s3:
+        try:
+            data_obj = s3.get_object(Bucket=s3_bucket, Key=data_key)
+            data = json.loads(data_obj["Body"].read().decode("utf-8"))
+            feature_obj = s3.get_object(Bucket=s3_bucket, Key=feature_names_key)
+            feature_names = json.loads(feature_obj["Body"].read().decode("utf-8"))
+            get_dagster_logger().info("Loaded churn data and feature names from S3.")
+        except Exception as e:
+            get_dagster_logger().warning(f"Could not load from S3: {e}. Falling back to local files.")
+    # Fallback to local
+    if data is None or feature_names is None:
+        project_root = os.path.dirname(os.path.dirname(__file__))
+        data_path = os.path.join(project_root, "data", "churn", "X_test_sample_2.json")
+        feature_names_path = os.path.join(project_root, "data", "churn", "feature_names_3.json")
+        with open(data_path, 'r') as f:
+            data = json.load(f)
+        with open(feature_names_path, 'r') as f:
+            feature_names = json.load(f)
+        get_dagster_logger().info("Loaded churn data and feature names from local files.")
     return pd.DataFrame(data, columns=feature_names)
 
 @asset
 def transformed_features(raw_churn_data: pd.DataFrame) -> pd.DataFrame:
     """Applies feature transformations to the raw data."""
-    # TODO: Add feature transformation logic here
+    # TODO: Add feature transformation logic if needed
     get_dagster_logger().info("Applying feature transformations (placeholder).")
     return raw_churn_data
 

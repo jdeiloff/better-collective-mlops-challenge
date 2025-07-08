@@ -182,3 +182,7 @@ To ensure the pipeline is both reliable and runs consistently, the following fea
 *   **Retry Logic**: Critical steps, such as storing predictions in the database, are equipped with a retry policy. If a transient error occurs, Dagster will automatically retry the step, increasing the pipeline's resilience.
 
 For more detailed information about the Dagster implementation, please refer to the `orchestration/README.md` file.
+
+#### 3. S3 Fallback for Data Ingestion
+
+The pipeline is designed to fetch the raw churn data and feature names from an S3 artifact store (using the `MLFLOW_S3_BUCKET` environment variable). If S3 is unavailable or the fetch fails, it automatically falls back to loading the files from the local `data/churn` directory. This ensures robust and flexible data ingestion for both cloud and local development environments.
