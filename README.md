@@ -6,6 +6,8 @@ Solution proposed by [Jonathan Deiloff](https://github.com/jdeiloff).
 
 Below is a high-level architecture diagram of the MLOps pipeline implemented in this repository:
 
+![image](https://github.com/user-attachments/assets/d7650adf-3491-40f2-8767-924c489e7a00)
+
 ```mermaid
 graph TD
     A[Raw Data in S3 / Local] -->|Fetch| B[Dagster Job: raw_churn_data]
